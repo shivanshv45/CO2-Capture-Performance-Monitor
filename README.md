@@ -1,8 +1,8 @@
 # CO2 Capture Process Model + Monitoring Dashboard
 
-A small Python project that models a simplified amine (MEA) CO2 capture unit
-and shows the results on a live dashboard, like a very stripped down version
-of what a plant monitoring screen might look like.
+A Python project that models a simplified amine (MEA) CO2 capture unit and
+shows the results on a live monitoring dashboard, like a stripped down
+version of what a plant monitoring screen might actually look like.
 
 I built this to dig into the process engineering side of carbon capture
 (mostly for a CCUS-related internship application) without needing access to
@@ -14,35 +14,53 @@ proprietary information involved anywhere.
 
 There's a process model for a 30 wt% MEA absorber/stripper loop. You give it
 a flue gas flow rate, CO2 percentage, amine concentration, lean loading, and
-a target capture rate, and it spits out the solvent circulation rate,
-reboiler duty, and rich loading. Then there's a rough cost module that turns
-that into a $/ton CO2 avoided number, and a synthetic data generator that
-fakes a fluctuating flue gas feed over a 24 hour period so the dashboard has
-something to show live instead of a single static number.
+a target capture rate. It solves for the rich loading using a simplified
+Kent-Eisenberg style vapor-liquid equilibrium relation instead of assuming a
+fixed number, then backs out solvent circulation from a mass balance, and
+builds up reboiler duty from its three real physical components (sensible
+heat, heat of desorption, stripping steam) instead of one lumped
+correlation.
 
-The dashboard is Streamlit, it has two tabs:
+On top of that there's a techno-economics module that breaks capex into
+actual equipment line items (absorber, stripper, reboiler, cross exchanger,
+pumps) scaled with standard power-law cost exponents, rolls that up into a
+rough $/ton CO2 avoided figure, and can run a tornado-style sensitivity to
+show which input the cost actually moves the most with. A synthetic data
+generator fakes a fluctuating flue gas feed over a 24 hour load curve,
+complete with occasional upset events (a CO2 slug or a flow surge), so the
+dashboard has something real to react to instead of a flat line.
 
-- **Live Monitor**: advances the synthetic feed step by step and shows the
-  KPIs trending over time, plus a couple of threshold flags (like "capture
-  rate dropped below target").
-- **Scenario Explorer**: sliders for amine concentration, capture rate target,
-  and flue gas composition so you can see the classic trade-off play out,
-  push capture rate up and reboiler duty (and cost) go up with it.
+The dashboard is Streamlit, it has three tabs:
+
+- **Live Monitor**: auto-plays the synthetic feed, with gauges, a simple
+  process schematic, rolling KPI trends, and anomaly flags. The flags use a
+  rolling z-score check (a basic control-chart rule) plus a couple of static
+  guardrails, not machine learning.
+- **Scenario Explorer**: sliders for amine concentration, capture rate
+  target, and flue gas composition, with the reboiler duty breakdown, the
+  capex breakdown, the classic capture-rate-vs-cost trade-off curve, and the
+  tornado sensitivity chart all updating live.
+- **Assumptions**: a short honest summary of what the model is and is not,
+  so nobody watching a demo mistakes this for a validated simulator.
 
 ## Why correlations instead of a real simulator
 
 Building an actual rate-based packed column model is a multi month exercise
 and needs proprietary correlations most of the time anyway. Instead I used
-published numbers from open MEA literature (mainly the Rochelle group's work
-out of UT Austin on reboiler duty ranges, roughly 2.5 to 4 GJ per ton CO2
-captured for conventional 30 wt% MEA) and built simplified but physically
-reasonable relationships around those benchmarks. The full breakdown of what
-correlations were used and where the numbers came from is in
-[methodology.md](methodology.md).
+published numbers and relationships from open MEA literature, mainly the
+Kent-Eisenberg equilibrium framework for CO2 partial pressure over loaded
+amine, and the Freeman and Rochelle (UT Austin) breakdown of reboiler duty
+into sensible heat, heat of reaction, and stripping steam, and built
+simplified but physically reasonable versions of both instead of assuming a
+single fixed correlation. Capex uses the same logic: real equipment line
+items with real power-law scaling exponents, just with illustrative
+reference costs instead of vendor quotes. The full breakdown of what was
+used, where the numbers came from, and where the model's known weak points
+are is in [methodology.md](methodology.md).
 
-This is not a bankable techno-economic study and it's not a rigorous process
-simulation. It's scoped to be a believable, defensible approximation that
-gets the trends right, not the fourth decimal place.
+This is still not a bankable techno-economic study and it's not a rigorous
+process simulation. It's scoped to be a believable, defensible approximation
+that gets the mechanisms and the trends right, not the fourth decimal place.
 
 ## Running it
 
@@ -73,32 +91,40 @@ pip install pytest
 pytest tests/
 ```
 
-The tests mostly check that the numbers stay in a physically sane range
-(reboiler duty landing in the published 2.5-4.5 GJ/ton band, cost per ton
-staying positive and in a reasonable ballpark, capture rate trade-offs going
-the right direction) rather than checking exact values, since this is an
-approximation, not a validated simulator.
+There are 17 tests covering the equilibrium relation's shape (pressure rises
+with loading and temperature), the reboiler duty component breakdown, mass
+balance consistency, the capex line items summing correctly, and the
+tornado sensitivity output, plus a couple of tests on the anomaly detection
+logic. They mostly check that the numbers stay in physically sane ranges
+and that the trade-offs move in the right direction, rather than checking
+exact values, since this is an approximation, not a validated simulator.
+
+A GitHub Actions workflow runs the same test suite on every push.
 
 ## Project layout
 
 ```
 co2_capture/
-  process_model.py     absorber/stripper model (Module A)
-  techno_economics.py  cost per ton CO2 avoided (Module B)
-  synthetic_plant.py   fake flue gas data stream (Module C)
-dashboard.py           Streamlit app (Modules D and E)
-tests/                 sanity checks against published ranges
+  process_model.py     Kent-Eisenberg equilibrium + reboiler duty breakdown (Module A)
+  techno_economics.py  equipment-level capex, cost per ton, tornado sensitivity (Module B)
+  synthetic_plant.py   fake flue gas stream with load curve and upset events (Module C)
+  anomaly.py           rolling z-score and static guardrail checks
+dashboard.py           Streamlit app, live monitor + scenario explorer (Modules D and E)
+tests/                 sanity checks against published ranges and internal consistency
 methodology.md         assumptions, sources, and limitations
 ```
 
 ## Limitations, said plainly
 
-- No real rate-based mass transfer model, this is correlation based.
+- No rigorous stage-by-stage VLE solve or packed column hydraulics. The
+  Kent-Eisenberg style relation here is simplified and hand-fitted to a
+  couple of qualitative anchors, not fitted to a full published dataset.
 - No physical pilot unit and no real plant data anywhere.
-- Cost numbers are order of magnitude illustrations, not vendor quotes.
-- The dashboard's "flag" logic is a plain threshold check. It is not machine
-  learning and I'm not going to pretend it's fault detection or a digital
-  twin.
+- Cost numbers come from power-law scaling off illustrative reference costs,
+  not vendor quotes or bottom-up equipment sizing.
+- The dashboard's anomaly flags are rolling statistics and static
+  thresholds. It is not machine learning and I'm not going to pretend it's
+  fault detection or a digital twin.
 
-More detail on assumptions and what I'd build next with more time is in
-[methodology.md](methodology.md).
+More detail on assumptions, cited sources, and what I'd build next with more
+time is in [methodology.md](methodology.md).
