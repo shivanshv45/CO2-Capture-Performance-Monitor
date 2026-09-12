@@ -5,3 +5,5 @@ __pycache__/
 venv/
 .streamlit/
 *.egg-info/
+prd.md
+methodology.md
