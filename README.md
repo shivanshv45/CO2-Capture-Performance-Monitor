@@ -43,6 +43,23 @@ The dashboard is Streamlit, it has three tabs:
 - **Assumptions**: a short honest summary of what the model is and is not,
   so nobody watching a demo mistakes this for a validated simulator.
 
+## Screenshots
+
+Live Monitor tab, gauges and the process schematic updating as the synthetic
+feed advances:
+
+![Live monitor tab](docs/screenshots/live_monitor.png)
+
+Scenario Explorer tab, reboiler duty and capex broken into their real
+components instead of one number:
+
+![Scenario explorer top](docs/screenshots/scenario_explorer_top.png)
+
+Same tab scrolled down, capture-rate trade-off curves and the tornado
+sensitivity chart:
+
+![Scenario explorer sensitivity](docs/screenshots/scenario_explorer_sensitivity.png)
+
 ## Why correlations instead of a real simulator
 
 Building an actual rate-based packed column model is a multi month exercise
